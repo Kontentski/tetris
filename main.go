@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
@@ -21,11 +22,16 @@ func createRoomHandler(w http.ResponseWriter, r *http.Request) {
 
 func joinRoomHandler(w http.ResponseWriter, r *http.Request) {
 	roomID := r.URL.Query().Get("roomID")
-	playerID := r.URL.Query().Get("playerID")
+	playerID := game.GenerateID()
 	player := &game.Player{ID: playerID}
 	room, success := game.JoinRoom(roomID, player)
 	if success {
-		w.Write([]byte("Joined room: " + room.ID))
+		response := map[string]string{
+			"message":  "Joined room: " + room.ID,
+			"playerID": playerID,
+		}
+		jsonResponse, _ := json.Marshal(response)
+		w.Write(jsonResponse)
 	} else {
 		http.Error(w, "Room not found", http.StatusNotFound)
 	}
@@ -43,13 +49,13 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	roomID := r.URL.Query().Get("roomID")
 	playerID := r.URL.Query().Get("playerID")
 
-	if roomID == "" {
-		log.Println("Room ID is missing")
-		http.Error(w, "Room ID is required", http.StatusBadRequest)
+	if roomID == "" || playerID == "" {
+		log.Println("Room ID or Player ID is missing")
+		http.Error(w, "Room ID and Player ID are required", http.StatusBadRequest)
 		return
 	}
 
-	// Find the room and player
+	// Find the room
 	room, exists := game.GetRoom(roomID)
 	if !exists {
 		log.Println("Room not found:", roomID)
@@ -57,8 +63,25 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	player := &game.Player{ID: playerID, Conn: conn}
-	room.Players = append(room.Players, player)
+	// Find the player in the room
+	var player *game.Player
+	for _, p := range room.Players {
+		if p.ID == playerID {
+			player = p
+			break
+		}
+	}
+
+	if player == nil {
+		log.Println("Player not found:", playerID)
+		http.Error(w, "Player not found", http.StatusNotFound)
+		return
+	}
+
+	// Assign the WebSocket connection to the player
+	log.Printf("Assigning WebSocket connection to player: %s", playerID)
+	player.Conn = conn
+	log.Printf("Player %s connection assigned", playerID)
 
 	// Start the game if all players are ready
 	if len(room.Players) == 2 { // Example: start when 2 players are in the room
@@ -88,7 +111,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		command := string(message)
-		room.Game.HandleInput(command)
+		room.Game.HandleInput(playerID, command)
 	}
 }
 

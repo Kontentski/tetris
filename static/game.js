@@ -24,11 +24,12 @@ class TetrisGame {
 
     joinRoom() {
         const roomID = document.getElementById('roomID').value;
-        fetch(`/join-room?roomID=${roomID}&playerID=${this.playerID}`)
-            .then(response => response.text())
-            .then(message => {
+        fetch(`/join-room?roomID=${roomID}`)
+            .then(response => response.json())
+            .then(data => {
                 this.roomID = roomID;
-                alert(message);
+                this.playerID = data.playerID; // Store the player ID
+                alert(data.message);
             })
             .catch(() => alert('Failed to join room'));
     }
@@ -42,8 +43,8 @@ class TetrisGame {
     }
 
     connectWebSocket() {
-        if (!this.roomID) {
-            alert('Room ID is not set');
+        if (!this.roomID || !this.playerID) {
+            alert('Room ID or Player ID is not set');
             return;
         }
         this.ws = new WebSocket(`ws://localhost:8080/ws?roomID=${this.roomID}&playerID=${this.playerID}`);

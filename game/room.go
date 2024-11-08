@@ -45,6 +45,7 @@ func JoinRoom(roomID string, player *Player) (*Room, bool) {
 		return nil, false
 	}
 	room.Players = append(room.Players, player)
+	room.Game.Players = append(room.Game.Players, player)
 	return room, true
 }
 
