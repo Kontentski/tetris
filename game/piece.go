@@ -44,16 +44,6 @@ var Pieces = [][][]bool{
 	},
 }
 
-/* var Colors = []string{
-    "#FF0D72", // I
-    "#0DC2FF", // O
-    "#0DFF72", // T
-    "#F538FF", // L
-    "#FF8E0D", // J
-    "#FFE138", // S
-    "#3877FF", // Z
-} */
-
 func generateRandomColor() string {
 	// Ensure at least one color component is bright (>128)
 	r := rand.Intn(256)

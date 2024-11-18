@@ -1,4 +1,8 @@
-export const drawGame = (ctx: CanvasRenderingContext2D, gameState: any) => {
+import { GameState } from '../types/game';
+
+export const drawGame = (ctx: CanvasRenderingContext2D, gameState: GameState) => {
+    if (!gameState) return;
+
     // Clear canvas
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);

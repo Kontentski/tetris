@@ -21,100 +21,96 @@ func createRoomHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func joinRoomHandler(w http.ResponseWriter, r *http.Request) {
+	// Set proper headers
+	w.Header().Set("Content-Type", "application/json")
+
 	roomID := r.URL.Query().Get("roomID")
 	playerID := game.GenerateID()
 	player := &game.Player{ID: playerID}
+	
 	room, success := game.JoinRoom(roomID, player)
 	if success {
 		response := map[string]string{
 			"message":  "Joined room: " + room.ID,
 			"playerID": playerID,
 		}
-		jsonResponse, _ := json.Marshal(response)
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 		w.Write(jsonResponse)
 	} else {
-		http.Error(w, "Room not found", http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Room not found",
+		})
 	}
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		log.Println("WebSocket upgrade error:", err)
 		return
 	}
 	defer conn.Close()
 
-	// Extract roomID and playerID from query parameters
 	roomID := r.URL.Query().Get("roomID")
 	playerID := r.URL.Query().Get("playerID")
 
-	if roomID == "" || playerID == "" {
-		log.Println("Room ID or Player ID is missing")
-		http.Error(w, "Room ID and Player ID are required", http.StatusBadRequest)
-		return
-	}
+	log.Printf("WebSocket connection attempt - Room: %s, Player: %s", roomID, playerID)
 
-	// Find the room
 	room, exists := game.GetRoom(roomID)
 	if !exists {
-		log.Println("Room not found:", roomID)
-		http.Error(w, "Room not found", http.StatusNotFound)
+		log.Printf("Room not found: %s", roomID)
 		return
 	}
 
-	// Find the player in the room
 	var player *game.Player
 	for _, p := range room.Players {
-		if p.ID == playerID {
+		if p != nil && p.ID == playerID {
 			player = p
 			break
 		}
 	}
 
 	if player == nil {
-		log.Println("Player not found:", playerID)
-		http.Error(w, "Player not found", http.StatusNotFound)
+		log.Printf("Player %s not found in room %s", playerID, roomID)
 		return
 	}
 
-	// Assign the WebSocket connection to the player
-	log.Printf("Assigning WebSocket connection to player: %s", playerID)
-	player.Conn = conn
-	log.Printf("Player %s connection assigned", playerID)
+	player.SetConnection(conn)
+	log.Printf("Player %s connected successfully to room %s", playerID, roomID)
 
-	// Start the game if all players are ready
-	if len(room.Players) == 2 { // Example: start when 2 players are in the room
-		room.Game.Start()
-	}
+	// Check and start the game if both players are connected
+	room.Game.CheckAndStartGame()
 
-	// Handle game updates and player inputs
+	// Create a done channel for cleanup
+	done := make(chan struct{})
+	defer close(done)
+
+	// Handle incoming messages
 	go func() {
-		for update := range room.Game.Updates {
-			for _, p := range room.Players {
-				if p.Conn == nil {
-					log.Println("Player connection is nil")
-					continue
-				}
-				p.Mu.Lock() // Lock the mutex before writing
-				if err := p.Conn.WriteMessage(websocket.TextMessage, update); err != nil {
-					log.Println(err)
-					p.Mu.Unlock() // Unlock the mutex if there's an error
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				_, message, err := conn.ReadMessage()
+				if err != nil {
+					log.Printf("Read error: %v", err)
 					return
 				}
-				p.Mu.Unlock() // Unlock the mutex after writing
+				command := string(message)
+				room.Game.HandleInput(playerID, command)
 			}
 		}
 	}()
 
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			log.Println(err)
-			break
-		}
-		command := string(message)
-		room.Game.HandleInput(playerID, command)
+	// Handle game updates
+	for update := range room.Game.Updates {
+		room.Game.BroadcastUpdate(update)
 	}
 }
 
