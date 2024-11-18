@@ -96,10 +96,13 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					log.Println("Player connection is nil")
 					continue
 				}
+				p.Mu.Lock() // Lock the mutex before writing
 				if err := p.Conn.WriteMessage(websocket.TextMessage, update); err != nil {
 					log.Println(err)
+					p.Mu.Unlock() // Unlock the mutex if there's an error
 					return
 				}
+				p.Mu.Unlock() // Unlock the mutex after writing
 			}
 		}
 	}()

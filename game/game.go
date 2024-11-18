@@ -20,7 +20,7 @@ type GameState struct {
 	GameOver     bool   `json:"gameOver"`
 	PiecesPlaced int    `json:"piecesPlaced"`
 	Level        int    `json:"level"`
-	CurrentPlayer int   `json:"currentPlayer"` // Track the current player
+	CurrentPlayer int   `json:"currentPlayer"`
 }
 
 type Game struct {
