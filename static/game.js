@@ -5,15 +5,49 @@ class TetrisGame {
         this.blockSize = 20;
         this.bufferRows = 4;
         
-        // Set canvas size based on board dimensions (10x20)
-        this.canvas.width = 10 * this.blockSize;  // 10 columns
-        this.canvas.height = 20 * this.blockSize; // 20 rows (visible only)
-        
-        this.connectWebSocket();
+        this.roomID = null;
+        this.playerID = Math.random().toString(36).substring(7); // Random player ID
+
+        document.getElementById('createRoom').addEventListener('click', () => this.createRoom());
+        document.getElementById('joinRoom').addEventListener('click', () => this.joinRoom());
+        document.getElementById('startGame').addEventListener('click', () => this.startGame());
+    }
+
+    createRoom() {
+        fetch('/create-room')
+            .then(response => response.text())
+            .then(roomID => {
+                this.roomID = roomID;
+                alert('Room created: ' + roomID);
+            });
+    }
+
+    joinRoom() {
+        const roomID = document.getElementById('roomID').value;
+        fetch(`/join-room?roomID=${roomID}`)
+            .then(response => response.json())
+            .then(data => {
+                this.roomID = roomID;
+                this.playerID = data.playerID; // Store the player ID
+                alert(data.message);
+            })
+            .catch(() => alert('Failed to join room'));
+    }
+
+    startGame() {
+        if (this.roomID) {
+            this.connectWebSocket();
+        } else {
+            alert('Please join a room first');
+        }
     }
 
     connectWebSocket() {
-        this.ws = new WebSocket('ws://localhost:8080/ws');
+        if (!this.roomID || !this.playerID) {
+            alert('Room ID or Player ID is not set');
+            return;
+        }
+        this.ws = new WebSocket(`ws://localhost:8080/ws?roomID=${this.roomID}&playerID=${this.playerID}`);
         this.ws.onmessage = (event) => this.handleGameState(event.data);
     }
 
