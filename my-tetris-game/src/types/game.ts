@@ -12,4 +12,12 @@ export interface GameState {
     gameOver: boolean;
     score: number;
     level: number;
+    sequenceNumber?: number;
+    currentPlayer: number;
+    players: string[];
+}
+
+export interface GameCommand {
+    command: string;
+    sequenceNumber: number;
 } 

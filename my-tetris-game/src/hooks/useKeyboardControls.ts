@@ -1,21 +1,22 @@
 import { useEffect } from 'react';
 
-export const useKeyboardControls = (ws: WebSocket | null) => {
+export const useKeyboardControls = (
+    sendCommand: (command: string) => void
+) => {
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
-            if (!ws) return;
             switch (event.key) {
                 case 'ArrowLeft':
-                    ws.send('left');
+                    sendCommand('left');
                     break;
                 case 'ArrowRight':
-                    ws.send('right');
+                    sendCommand('right');
                     break;
                 case 'ArrowDown':
-                    ws.send('down');
+                    sendCommand('down');
                     break;
                 case 'ArrowUp':
-                    ws.send('rotate');
+                    sendCommand('rotate');
                     break;
             }
         };
@@ -24,5 +25,5 @@ export const useKeyboardControls = (ws: WebSocket | null) => {
         return () => {
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, [ws]);
+    }, [sendCommand]);
 }; 

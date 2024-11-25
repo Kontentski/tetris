@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"runtime"
 
 	"github.com/gorilla/websocket"
 	"github.com/kontentski/tetris/game"
@@ -54,7 +55,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		log.Println("WebSocket upgrade error:", err)
 		return
 	}
-	defer conn.Close()
+	defer func(){
+		log.Println("WebSocket connection closed")
+		conn.Close()
+		
+	}()
 
 	roomID := r.URL.Query().Get("roomID")
 	playerID := r.URL.Query().Get("playerID")
@@ -102,8 +107,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					log.Printf("Read error: %v", err)
 					return
 				}
-				command := string(message)
-				room.Game.HandleInput(playerID, command)
+				room.Game.HandleInput(playerID, message)
 			}
 		}
 	}()
@@ -115,10 +119,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	runtime.GOMAXPROCS(1)
 	http.HandleFunc("/create-room", createRoomHandler)
 	http.HandleFunc("/join-room", joinRoomHandler)
 	http.HandleFunc("/ws", handleWebSocket)
-	http.Handle("/", http.FileServer(http.Dir("static")))
+	http.Handle("/", http.FileServer(http.Dir("my-tetris-game/dist")))
 
 	log.Println("Server starting on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

@@ -3,24 +3,24 @@ import GameCanvas from './GameCanvas';
 import Controls from './Controls';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
+import { GameState } from '../types/game';
 
 const TetrisGame: React.FC = () => {
-    const [gameState, setGameState] = useState<any>(null);
+    const [gameState, setGameState] = useState<GameState | null>(null);
     const [roomID, setRoomID] = useState<string | null>(null);
-    const [playerID, setPlayerID] = useState<string | null>(null); // Changed to null initially
+    const [playerID, setPlayerID] = useState<string | null>(null);
     const [score, setScore] = useState<number>(0);
     const [level, setLevel] = useState<number>(1);
 
-    const { ws, connectWebSocket } = useWebSocket({
-        onMessage: (data: string) => {
-            const newGameState = JSON.parse(data);
+    const { connectWebSocket, sendCommand } = useWebSocket({
+        onMessage: (newGameState: GameState) => {
             setGameState(newGameState);
             setScore(newGameState.score);
             setLevel(newGameState.level);
         }
     });
 
-    useKeyboardControls(ws);
+    useKeyboardControls(sendCommand);
 
     const createRoom = async () => {
         try {

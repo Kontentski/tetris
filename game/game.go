@@ -14,14 +14,21 @@ const (
 )
 
 type GameState struct {
-	Board         *Board `json:"board"`
-	CurrentPiece  *Piece `json:"currentPiece"`
-	NextPiece     *Piece `json:"nextPiece"`
-	Score         int    `json:"score"`
-	GameOver      bool   `json:"gameOver"`
-	PiecesPlaced  int    `json:"piecesPlaced"`
-	Level         int    `json:"level"`
-	CurrentPlayer int    `json:"currentPlayer"`
+	Board          *Board   `json:"board"`
+	CurrentPiece   *Piece   `json:"currentPiece"`
+	NextPiece      *Piece   `json:"nextPiece"`
+	Score          int      `json:"score"`
+	GameOver       bool     `json:"gameOver"`
+	PiecesPlaced   int      `json:"piecesPlaced"`
+	Level          int      `json:"level"`
+	CurrentPlayer  int      `json:"currentPlayer"`
+	SequenceNumber int      `json:"sequenceNumber"`
+	Players        []string `json:"players"`
+}
+
+type GameCommand struct {
+	Command        string `json:"command"`
+	SequenceNumber int    `json:"sequenceNumber"`
 }
 
 type Game struct {
@@ -44,28 +51,40 @@ func NewGame() *Game {
 			PiecesPlaced:  0,
 			Level:         1,
 			CurrentPlayer: 0,
+			Players:       make([]string, 0),
 		},
 		Updates: make(chan []byte),
 		ticker:  time.NewTicker(InitialSpeed * time.Millisecond),
 		Started: false,
-		Players: make([]*Player, 0, 2),
+		Players: make([]*Player, 0),
 	}
 }
 
 func (g *Game) Start() {
 	g.mu.Lock()
+
+	g.State.Players = make([]string, 0)
+	for _, player := range g.Players {
+		if player != nil {
+			g.State.Players = append(g.State.Players, player.ID)
+		}
+	}
+
 	g.State.NextPiece = NewPiece(-1)
 	g.State.CurrentPiece = NewPiece(-1)
-	
+
 	if len(g.Players) > 0 && g.Players[0] != nil {
 		g.State.CurrentPlayer = 0
 		currentPlayerID := g.Players[0].ID
 		log.Printf("Game starting with first player: %s (verified)", currentPlayerID)
+		log.Printf("Game state players: %v", g.State.Players)
+		log.Printf("Game players: %v", g.Players)
 	}
 	g.mu.Unlock()
 
 	// Send initial game state
 	if update, err := json.Marshal(g.State); err == nil {
+		log.Printf("Sending initial game state: %s", string(update))
 		g.Updates <- update
 	}
 
@@ -129,9 +148,15 @@ func (g *Game) Update() {
 	}
 }
 
-func (g *Game) HandleInput(playerID string, command string) {
+func (g *Game) HandleInput(playerID string, commandData []byte) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
+	var command GameCommand
+	if err := json.Unmarshal(commandData, &command); err != nil {
+		log.Printf("Error unmarshaling command: %v", err)
+		return
+	}
 
 	if g.State.GameOver || g.State.CurrentPiece == nil || len(g.Players) == 0 {
 		return
@@ -150,9 +175,10 @@ func (g *Game) HandleInput(playerID string, command string) {
 		return
 	}
 
-	log.Printf("Processing command '%s' from player %s", command, playerID)
+	log.Printf("Processing command '%s' (seq: %d) from player %s",
+		command.Command, command.SequenceNumber, playerID)
 
-	switch command {
+	switch command.Command {
 	case "left":
 		if g.State.Board.IsValidMove(g.State.CurrentPiece, g.State.CurrentPiece.X-1, g.State.CurrentPiece.Y) {
 			g.State.CurrentPiece.X--
@@ -164,6 +190,7 @@ func (g *Game) HandleInput(playerID string, command string) {
 	case "down":
 		if g.State.Board.IsValidMove(g.State.CurrentPiece, g.State.CurrentPiece.X, g.State.CurrentPiece.Y+1) {
 			g.State.CurrentPiece.Y++
+			log.Println("moving down")
 		}
 	case "rotate":
 		g.State.CurrentPiece.Rotate()
@@ -172,8 +199,12 @@ func (g *Game) HandleInput(playerID string, command string) {
 			for i := 0; i < 3; i++ {
 				g.State.CurrentPiece.Rotate()
 			}
+			log.Println("rotating")
 		}
 	}
+
+	// Update sequence number in state
+	g.State.SequenceNumber = command.SequenceNumber
 
 	// Send update after handling input
 	if update, err := json.Marshal(g.State); err == nil {
@@ -211,15 +242,18 @@ func (g *Game) CheckAndStartGame() {
 
 	connectedPlayers := 0
 	var connectedPlayerIDs []string
+
+	g.State.Players = make([]string, 0)
 	for _, p := range g.Players {
 		if p != nil && p.Conn != nil {
 			connectedPlayers++
-			log.Printf("Player connected: %s", p.ID)
 			connectedPlayerIDs = append(connectedPlayerIDs, p.ID)
+			g.State.Players = append(g.State.Players, p.ID)
 		}
 	}
 
 	log.Printf("Connected players: %d", connectedPlayers)
+	log.Printf("Current player list in state: %v", g.State.Players)
 
 	if connectedPlayers == 2 {
 		log.Printf("Starting game with players: %s vs %s",
