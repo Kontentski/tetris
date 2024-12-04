@@ -9,6 +9,10 @@ export interface GameState {
         Y: number;
         Color: string;
     } | null;
+    nextPiece: {
+        Shape: boolean[][];
+        Color: string;
+    } | null;
     gameOver: boolean;
     score: number;
     level: number;

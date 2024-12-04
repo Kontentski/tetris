@@ -98,14 +98,20 @@ func (g *Game) Update() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	// Log the current game state before any updates
+	log.Printf("Updating game state: %+v", g.State)
+
 	if g.State.GameOver {
+		log.Println("Game is over, skipping update.")
 		return
 	}
 
 	// Initialize pieces if needed
 	if g.State.CurrentPiece == nil {
+		log.Println("Initializing current piece.")
 		if g.State.NextPiece == nil {
 			g.State.NextPiece = NewPiece(-1)
+			log.Println("Next piece was nil, created a new one.")
 		}
 		g.State.CurrentPiece = g.State.NextPiece
 		g.State.NextPiece = NewPiece(-1)
@@ -113,6 +119,7 @@ func (g *Game) Update() {
 		// Check if game over
 		if !g.State.Board.IsValidMove(g.State.CurrentPiece, g.State.CurrentPiece.X, g.State.CurrentPiece.Y) {
 			g.State.GameOver = true
+			log.Println("Game over detected after initializing current piece.")
 			return
 		}
 	}
@@ -120,8 +127,10 @@ func (g *Game) Update() {
 	// Try to move piece down
 	if g.State.Board.IsValidMove(g.State.CurrentPiece, g.State.CurrentPiece.X, g.State.CurrentPiece.Y+1) {
 		g.State.CurrentPiece.Y++
+		log.Println("Moved current piece down.")
 	} else {
 		// Place piece and create new one
+		log.Println("Current piece cannot move down, placing piece on board.")
 		g.State.Board.PlacePiece(g.State.CurrentPiece)
 		g.State.PiecesPlaced++
 		g.updateSpeed()
@@ -145,6 +154,8 @@ func (g *Game) Update() {
 	// Send update
 	if update, err := json.Marshal(g.State); err == nil {
 		g.Updates <- update
+	} else {
+		log.Printf("Error marshaling game state: %v", err)
 	}
 }
 
@@ -172,6 +183,11 @@ func (g *Game) HandleInput(playerID string, commandData []byte) {
 	if playerID != currentPlayer.ID {
 		log.Printf("Ignoring input from player %s, current player is %s (index: %d)",
 			playerID, currentPlayer.ID, currentPlayerIndex)
+		return
+	}
+
+	// Check rate limiting
+	if currentPlayer.IsRateLimited() {
 		return
 	}
 

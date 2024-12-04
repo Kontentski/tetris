@@ -19,10 +19,12 @@ export const useWebSocket = ({ onMessage }: WebSocketHookProps) => {
     const localGameState = useRef<GameState | null>(null);
     const sequenceNumber = useRef<number>(0);
     const playerID = useRef<string | null>(null);
-    const MAX_PENDING_MOVES = 20;
+    const MAX_PENDING_MOVES = 10;
     const PENDING_MOVES_TIMEOUT = 3000; // 3 seconds without input
     let lastInputTime = useRef<number>(Date.now());
     let pendingMovesClearTimeout = useRef<NodeJS.Timeout | null>(null);
+    const COMMAND_COOLDOWN = 100; // 100ms cooldown between commands
+    const lastCommandTime = useRef<{ [key: string]: number }>({});
 
     const isCurrentPlayer = (): boolean => {
         console.log('Checking current player:', {
@@ -65,6 +67,34 @@ export const useWebSocket = ({ onMessage }: WebSocketHookProps) => {
         return isCurrentTurn;
     };
 
+    const getNewPiecePosition = (command: string, piece: any): { isValid: boolean; newX: number; newY: number; newShape?: boolean[][] } => {
+        switch (command) {
+            case 'left':
+                return { isValid: false, newX: piece.X - 1, newY: piece.Y };
+            case 'right':
+                return { isValid: false, newX: piece.X + 1, newY: piece.Y };
+            case 'down':
+                return { isValid: false, newX: piece.X, newY: piece.Y + 1 };
+            case 'rotate':
+                const rotated = rotatePiece(piece);
+                return { isValid: false, newX: piece.X, newY: piece.Y, newShape: rotated.Shape };
+            default:
+                return { isValid: false, newX: piece.X, newY: piece.Y };
+        }
+    };
+
+    const validateMove = (state: GameState, command: string): boolean => {
+        const piece = state.currentPiece;
+        if (!piece) return false;
+
+        const newPosition = getNewPiecePosition(command, piece);
+        const pieceToCheck = newPosition.newShape 
+            ? { ...piece, Shape: newPosition.newShape }
+            : piece;
+
+        return isValidMove(state.board, pieceToCheck, newPosition.newX, newPosition.newY);
+    };
+
     const applyMove = (state: GameState, command: string): GameState => {
         const canMove = isCurrentPlayer();
         console.log('Attempting to apply move:', {
@@ -85,33 +115,16 @@ export const useWebSocket = ({ onMessage }: WebSocketHookProps) => {
             return newState;
         }
 
-        switch (command) {
-            case 'left':
-                if (isValidMove(newState.board, piece, piece.X - 1, piece.Y)) {
-                    piece.X--;
-                    console.log('Applied left move');
-                }
-                break;
-            case 'right':
-                if (isValidMove(newState.board, piece, piece.X + 1, piece.Y)) {
-                    piece.X++;
-                    console.log('Applied right move');
-                }
-                break;
-            case 'down':
-                if (isValidMove(newState.board, piece, piece.X, piece.Y + 1)) {
-                    piece.Y++;
-                    console.log('Applied down move');
-                }
-                break;
-            case 'rotate':
-                const rotated = rotatePiece(piece);
-                if (isValidMove(newState.board, rotated, piece.X, piece.Y)) {
-                    piece.Shape = rotated.Shape;
-                    console.log('Applied rotation');
-                }
-                break;
+        const newPosition = getNewPiecePosition(command, piece);
+        if (isValidMove(newState.board, piece, newPosition.newX, newPosition.newY)) {
+            piece.X = newPosition.newX;
+            piece.Y = newPosition.newY;
+            if (newPosition.newShape) {
+                piece.Shape = newPosition.newShape;
+            }
+            console.log(`Applied ${command} move`);
         }
+
         return newState;
     };
 
@@ -139,20 +152,23 @@ export const useWebSocket = ({ onMessage }: WebSocketHookProps) => {
     };
 
     const sendCommand = (command: string) => {
-        console.log('Attempting to send command:', {
-            command,
-            wsConnected: !!ws,
-            isCurrentTurn: isCurrentPlayer(),
-            currentGameState: localGameState.current
-        });
+        // Early validations (WebSocket, cooldown, current player)
+        const now = Date.now();
+        const lastTime = lastCommandTime.current[command] || 0;
+        if (now - lastTime < COMMAND_COOLDOWN) {
+            console.log(`Command '${command}' rejected: cooldown not finished`);
+            return;
+        }
+        lastCommandTime.current[command] = now;
 
-        if (!ws) {
-            console.log('Command rejected: WebSocket not connected');
+        if (!ws || !isCurrentPlayer() || !localGameState.current) {
+            console.log('Command rejected: invalid state');
             return;
         }
 
-        if (!isCurrentPlayer()) {
-            console.log('Command rejected: not current player\'s turn');
+        // Validate the move
+        if (!validateMove(localGameState.current, command)) {
+            console.log('Command rejected: invalid move');
             return;
         }
 
@@ -171,7 +187,14 @@ export const useWebSocket = ({ onMessage }: WebSocketHookProps) => {
         // Apply move locally first
         if (localGameState.current) {
             const predictedState = applyMove(localGameState.current, command);
-            
+            const piece = predictedState.currentPiece;
+
+            // Check if the move is valid using isValidMove before sending
+            if (!piece || !isValidMove(predictedState.board, piece, piece.X, piece.Y)) {
+                console.log('Move rejected: invalid move, not sending command');
+                return; 
+            }
+
             // Limit pending moves
             if (pendingMoves.current.length >= MAX_PENDING_MOVES) {
                 console.warn('Too many pending moves, clearing older ones');
