@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import GameCanvas from './GameCanvas';
 import Controls from './Controls';
+import NextPiece from './NextPiece';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { GameState } from '../types/game';
@@ -24,7 +25,7 @@ const TetrisGame: React.FC = () => {
 
     const createRoom = async () => {
         try {
-            const response = await fetch('/api/create-room');
+            const response = await fetch('/create-room');
             if (!response.ok) {
                 throw new Error('Failed to create room');
             }
@@ -41,17 +42,17 @@ const TetrisGame: React.FC = () => {
     const joinRoom = async (inputRoomID: string) => {
         try {
             console.log('Attempting to join room:', inputRoomID);
-            
-            const response = await fetch(`/api/join-room?roomID=${inputRoomID}`);
+
+            const response = await fetch(`/join-room?roomID=${inputRoomID}`);
             console.log('Response status:', response.status);
-            
+
             if (!response.ok) {
                 throw new Error(`Failed to join room: ${response.status}`);
             }
 
             const data = await response.json();
             console.log('Join room response:', data);
-            
+
             if (data && data.message && data.playerID) {
                 setRoomID(inputRoomID);
                 setPlayerID(data.playerID); // Set the playerID from server response
@@ -76,13 +77,14 @@ const TetrisGame: React.FC = () => {
     return (
         <div className="game-container">
             <GameCanvas gameState={gameState} />
+            <NextPiece nextPiece={gameState?.nextPiece ? { shape: gameState.nextPiece.Shape, color: gameState.nextPiece.Color } : null} />
             <div className="info">
                 <div>Score: <span>{score}</span></div>
                 <div>Level: <span>{level}</span></div>
                 {roomID && <div>Room ID: <span>{roomID}</span></div>}
                 {playerID && <div>Player ID: <span>{playerID}</span></div>}
             </div>
-            <Controls 
+            <Controls
                 createRoom={createRoom}
                 joinRoom={joinRoom}
                 startGame={startGame}
